@@ -1,0 +1,114 @@
+# hello-kubernetes.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: mendix-mobile-service
+spec:
+  type: NodePort
+  ports:
+  - port: 8080
+    targetPort: 8080
+    nodePort: 30008
+  selector:
+    app: mobile-k8s
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: mendix-mobile-k8s
+  labels:
+    app: mobile-k8s
+spec:
+  serviceName: mendix-mobile-service
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mobile-k8s
+  template:
+    metadata:
+      labels:
+        app: mobile-k8s
+    spec:
+      containers:
+        - name: mendix-mobile-app
+          image: 
+          securityContext:
+            allowPrivilegeEscalation: false
+            runAsUser: 0
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8080
+          volumeMounts:
+            - name: data
+              mountPath: "/opt/mendix/build/data/files"
+          resources:
+            limits:
+              memory: 8Gi
+            requests:
+              memory: 4Gi
+          lifecycle:
+            postStart:
+              exec:
+                command: ["/bin/sh", "-c", "chmod -R 777 /var/lib/nginx"]
+          env:
+            - name: ADMIN_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: mendix-mobile-secrets
+                  key: admin-password
+            - name: ADMIN_USER
+              valueFrom:
+                secretKeyRef:
+                  name: mendix-mobile-secrets
+                  key: admin-user
+            - name: DEBUGGER_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: mendix-mobile-secrets
+                  key: debugger-password
+            - name: DATABASE_ENDPOINT
+              valueFrom:
+                secretKeyRef:
+                  name: mendix-mobile-secrets
+                  key: db-endpoint
+            - name: LICENSE_ID
+              valueFrom:
+                secretKeyRef:
+                  name: mendix-mobile-secrets
+                  key: license-id
+            - name: LICENSE_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: mendix-mobile-secrets
+                  key: license-key
+            - name: MXRUNTIME_DatabaseType
+              valueFrom:
+                secretKeyRef:
+                  name: mendix-mobile-secrets
+                  key: DatabaseType
+            - name: MXRUNTIME_DatabaseUserName
+              valueFrom:
+                secretKeyRef:
+                  name: mendix-mobile-secrets
+                  key: DatabaseUserName
+            - name: MXRUNTIME_DatabasePassword
+              valueFrom:
+                secretKeyRef:
+                  name: mendix-mobile-secrets
+                  key: DatabasePassword
+            - name: MXRUNTIME_DatabaseName
+              valueFrom:
+                secretKeyRef:
+                  name: mendix-mobile-secrets
+                  key: DatabaseName
+            - name: MXRUNTIME_DatabaseJdbcUrl
+              valueFrom:
+                secretKeyRef:
+                  name: mendix-mobile-secrets
+                  key: DatabaseJdbcUrl
+      imagePullSecrets:
+        - name: regcred
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: myuat-pvc

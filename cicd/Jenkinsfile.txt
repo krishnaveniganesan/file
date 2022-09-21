@@ -1,0 +1,77 @@
+pipeline {
+
+  environment {
+    dockerimagename = "reg.mendix.io/mobile/rapid_uat:$BUILD_NUMBER"
+    dockerImage = ""
+    Mendix_URL = 'https://git.api.mendix.com/7b12dac8-e30e-44fc-924c-688fde5fbee9.git'
+    Branch = "UAT-branch"
+    
+  }
+
+  agent any
+
+  stages {
+      
+
+    stage('DockerBuildPack') {
+        steps {
+          dir("mendix-docker-builpack"){
+            git 'https://github.com/mendix/docker-mendix-buildpack'
+          }
+        }
+    }
+
+    stage('Mendix_Git_Clone') {
+        steps {
+          dir("UM6P"){
+            git branch: "$Branch", credentialsId: 'MendixUAT', url: "$Mendix_URL"
+            sh 'rm -Rf .git'
+          }
+          script{
+            sh 'cd UM6P'
+            sh 'cp -R UM6P mendix-docker-builpack'
+            sh 'cd mendix-docker-builpack'
+          }
+        }
+    }
+    
+    
+    stage("Docker_build"){
+      steps{
+        dir("mendix-docker-builpack"){
+          script{
+              dockerImage = docker.build("$dockerimagename","--build-arg BUILD_PATH=UM6P -f Dockerfile .") 
+          }
+        }
+      } 
+    }
+
+    stage('Push_Image') {
+      steps{
+        script {
+            withCredentials([usernamePassword(credentialsId: 'DOCKERHUB', passwordVariable: 'DOCPASS', usernameVariable: 'DOCUSER')]) {
+            sh ''' docker login reg.mendix.io -u $DOCUSER -p $DOCPASS '''
+            dockerImage.push("$BUILD_NUMBER")
+            }
+        }
+      }
+    }
+    
+    
+    stage('Statefulset') {
+      steps {
+      sh ''' IMAGE="reg.mendix.io/mobile/rapid_uat:$BUILD_NUMBER"
+             kubectl --kubeconfig /var/lib/jenkins/kube-uat/config set image statefulset/mendix-mobile-k8s mendix-mobile-app=$IMAGE -n mendix '''
+      }  
+    }
+    
+
+  }
+    post {
+        always {
+          echo 'Cleanup workspace'
+          cleanWs()
+        }
+    }
+
+}
